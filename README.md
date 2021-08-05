@@ -2,7 +2,7 @@
     MINIO Java SDK 封装, 并制作成Spring-boot starter
 
 ## 版本说明
- - minio：3.13.0
+ - minio：8.3.0
 
 ## 使用方式
 
