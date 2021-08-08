@@ -6,7 +6,9 @@ import cn.darkjrong.minio.domain.ListObjectParam;
 import cn.darkjrong.minio.domain.RemoveObject;
 import cn.darkjrong.minio.exceptions.MinioException;
 import cn.darkjrong.spring.boot.autoconfigure.MinioProperties;
+import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.io.IoUtil;
+import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.system.SystemUtil;
@@ -1173,7 +1175,7 @@ public class MinioTemplate {
         try {
             minioClient.setBucketNotification(bucketNotificationArgs);
             return Boolean.TRUE;
-        }catch (Exception e) {
+        } catch (Exception e) {
             logger.error("setBucketNotification {}", e.getMessage());
         }
 
@@ -1195,7 +1197,7 @@ public class MinioTemplate {
 
             minioClient.deleteBucketNotification(bucketNotificationArgs);
             return Boolean.TRUE;
-        }catch (Exception e) {
+        } catch (Exception e) {
             logger.error("deleteBucketNotification {}", e.getMessage());
         }
 
@@ -1216,7 +1218,7 @@ public class MinioTemplate {
         try {
 
             return minioClient.getBucketReplication(bucketReplicationArgs);
-        }catch (Exception e) {
+        } catch (Exception e) {
             logger.error("deleteBucketNotification {}", e.getMessage());
             throw new MinioException(e.getMessage());
         }
@@ -1239,7 +1241,7 @@ public class MinioTemplate {
         try {
             minioClient.setBucketReplication(bucketReplicationArgs);
             return Boolean.TRUE;
-        }catch (Exception e) {
+        } catch (Exception e) {
             logger.error("setBucketReplication {}", e.getMessage());
         }
 
@@ -1257,12 +1259,318 @@ public class MinioTemplate {
         try {
             minioClient.deleteBucketReplication(DeleteBucketReplicationArgs.builder().bucket(bucketName).build());
             return Boolean.TRUE;
-        }catch (Exception e) {
+        } catch (Exception e) {
             logger.error("deleteBucketReplication {}", e.getMessage());
         }
 
         return Boolean.FALSE;
     }
+
+    /**
+     * 监听bucket的对象通知
+     *
+     * @param bucketName bucket名称
+     * @param prefix     前缀
+     * @param suffix     后缀
+     * @param events     事件 , 支持的事件类型：https://docs.min.io/docs/minio-bucket-notification-guide.html
+     * @return {@link List<NotificationRecords>} 事件集合
+     * @throws MinioException minio异常
+     */
+    public List<NotificationRecords> listenBucketNotification(String bucketName, String prefix, String suffix, String[] events) throws MinioException {
+
+        ListenBucketNotificationArgs notificationArgs = ListenBucketNotificationArgs.builder()
+                .bucket(bucketName)
+                .prefix(prefix).suffix(suffix).events(events).build();
+
+        try {
+
+            List<NotificationRecords> eventList = CollectionUtil.newArrayList();
+
+            CloseableIterator<Result<NotificationRecords>> bucketNotification = minioClient.listenBucketNotification(notificationArgs);
+            while (bucketNotification.hasNext()) {
+                eventList.add(bucketNotification.next().get());
+            }
+            return eventList;
+        } catch (Exception e) {
+            logger.error("listenBucketNotification {}", e.getMessage());
+            throw new MinioException(e.getMessage());
+        }
+    }
+
+    /**
+     * 监听bucket的对象通知
+     *
+     * @param bucketName bucket名称
+     * @param events     事件 , 支持的事件类型：https://docs.min.io/docs/minio-bucket-notification-guide.html
+     * @return {@link List<Event>} 事件集合
+     * @throws MinioException minio异常
+     */
+    public List<Event> listenBucketNotification(String bucketName, String[] events) throws MinioException {
+        return this.listenBucketNotification(bucketName, StrUtil.EMPTY, StrUtil.EMPTY, events);
+    }
+
+    /**
+     * bucket 设置加密
+     *
+     * @param bucketName   bucket名称
+     * @param sseAlgorithm 加密算法枚举
+     * @return {@link Boolean}
+     */
+    public Boolean setBucketEncryption(String bucketName, SseAlgorithm sseAlgorithm) {
+
+        SseConfiguration config = StrUtil.equals(SseAlgorithm.AES256.toString(), sseAlgorithm.toString())
+                ?  SseConfiguration.newConfigWithSseS3Rule() : SseConfiguration.newConfigWithSseKmsRule(IdUtil.fastUUID());
+
+        SetBucketEncryptionArgs bucketEncryptionArgs = SetBucketEncryptionArgs.builder().bucket(bucketName).config(config).build();
+
+        try {
+            minioClient.setBucketEncryption(bucketEncryptionArgs);
+            return Boolean.TRUE;
+        } catch (Exception e) {
+            logger.error("setBucketEncryption {}", e.getMessage());
+        }
+
+        return Boolean.FALSE;
+    }
+
+    /**
+     * 获取水桶加密
+     *
+     * @param bucketName bucket名称
+     * @return {@link SseConfigurationRule} 水桶加密方式
+     * @throws MinioException minio异常
+     */
+    public SseConfigurationRule getBucketEncryption(String bucketName) throws MinioException {
+
+        GetBucketEncryptionArgs bucketEncryptionArgs = GetBucketEncryptionArgs.builder().bucket(bucketName).build();
+
+        try {
+            SseConfiguration configuration = minioClient.getBucketEncryption(bucketEncryptionArgs);
+            return configuration.rule();
+        }catch (Exception e) {
+            logger.error("getBucketEncryption {}", e.getMessage());
+            throw new MinioException(e.getMessage());
+        }
+    }
+
+    public Boolean deleteBucketEncryption(String bucketName) {
+
+        DeleteBucketEncryptionArgs bucketEncryptionArgs = DeleteBucketEncryptionArgs.builder().bucket(bucketName).build();
+        try {
+
+            minioClient.deleteBucketEncryption(bucketEncryptionArgs);
+            return Boolean.TRUE;
+        }catch (Exception e) {
+            logger.error("deleteBucketEncryption {}", e.getMessage());
+        }
+
+        return Boolean.FALSE;
+
+    }
+
+    /**
+     * 获取bucket标签
+     *
+     * @param bucketName bucket名称
+     * @return {@link Map<String, String>}  标签信息
+     * @throws MinioException minio异常
+     */
+    public Map<String, String> getBucketTags(String bucketName) throws MinioException{
+
+        GetBucketTagsArgs bucketTagsArgs = GetBucketTagsArgs.builder().bucket(bucketName).build();
+        try {
+            Tags bucketTags = minioClient.getBucketTags(bucketTagsArgs);
+            return bucketTags.get();
+        }catch (Exception e) {
+            logger.error("getBucketTags {}", e.getMessage());
+            throw new MinioException(e.getMessage());
+        }
+
+    }
+
+    /**
+     * 设置bucket标签
+     *
+     * @param bucketName bucket名称
+     * @param tags       标签
+     * @return {@link Boolean} 是否成功
+     */
+    public Boolean setBucketTags(String bucketName, Map<String, String> tags) {
+
+        SetBucketTagsArgs bucketTagsArgs = SetBucketTagsArgs.builder().bucket(bucketName).tags(tags).build();
+        try {
+            minioClient.setBucketTags(bucketTagsArgs);
+            return Boolean.TRUE;
+        }catch (Exception e) {
+            logger.error("setBucketTags {}", e.getMessage());
+        }
+
+        return Boolean.FALSE;
+    }
+
+    /**
+     * 删除bucket标签
+     *
+     * @param bucketName bucket名称
+     * @return {@link Boolean}
+     */
+    public Boolean deleteBucketTags(String bucketName) {
+
+        DeleteBucketTagsArgs bucketTagsArgs = DeleteBucketTagsArgs.builder().bucket(bucketName).build();
+        try {
+            minioClient.deleteBucketTags(bucketTagsArgs);
+            return Boolean.TRUE;
+        }catch (Exception e) {
+            logger.error("deleteBucketTags {}", e.getMessage());
+        }
+
+        return Boolean.FALSE;
+    }
+
+    /**
+     * 获取对象标签
+     *
+     * @param bucketName bucket名称
+     * @param objectName 对象名称
+     * @return {@link Map}  标签信息
+     * @throws MinioException minio异常
+     */
+    public Map<String, String> getObjectTags(String bucketName, String objectName) throws MinioException {
+
+        GetObjectTagsArgs tagsArgs = GetObjectTagsArgs.builder().bucket(bucketName).object(objectName).build();
+
+        try {
+            return minioClient.getObjectTags(tagsArgs).get();
+        }catch (Exception e) {
+            logger.error("getObjectTags {}", e.getMessage());
+            throw new MinioException(e.getMessage());
+        }
+
+    }
+
+    /**
+     * 获取对象标签
+     *
+     * @param objectName 对象名称
+     * @return {@link Map}  标签信息
+     * @throws MinioException minio异常
+     */
+    public Map<String, String> getObjectTags(String objectName) throws MinioException {
+        return this.getObjectTags(minioProperties.getBucketName(), objectName);
+    }
+
+    /**
+     * 设置对象标签
+     *
+     * @param bucketName bucket名称
+     * @param tags       标签信息
+     * @param objectName 对象名称
+     * @return {@link Boolean}  是否成功
+     */
+    public Boolean setObjectTags(String bucketName, String objectName, Map<String, String> tags) {
+
+        SetObjectTagsArgs objectTagsArgs = SetObjectTagsArgs.builder().bucket(bucketName).object(objectName).tags(tags).build();
+
+        try {
+            minioClient.setObjectTags(objectTagsArgs);
+            return Boolean.TRUE;
+        }catch (Exception e) {
+            logger.error("setObjectTags {}", e.getMessage());
+        }
+
+        return Boolean.FALSE;
+    }
+
+    /**
+     * 设置对象标签
+     *
+     * @param tags       标签信息
+     * @param objectName 对象名称
+     * @return {@link Boolean}  是否成功
+     */
+    public Boolean setObjectTags(String objectName, Map<String, String> tags) {
+     return setObjectTags(minioProperties.getBucketName(), objectName, tags);
+    }
+
+    /**
+     * 删除对象标签
+     *
+     * @param bucketName bucket名称
+     * @param objectName 对象名称
+     * @return {@link Boolean} 是否成功
+     */
+    public Boolean deleteObjectTags(String bucketName, String objectName) {
+
+        DeleteObjectTagsArgs objectTagsArgs = DeleteObjectTagsArgs.builder().bucket(bucketName).object(objectName).build();
+
+        try {
+            minioClient.deleteObjectTags(objectTagsArgs);
+            return Boolean.TRUE;
+        }catch (Exception e) {
+            logger.error("deleteObjectTags {}", e.getMessage());
+        }
+
+        return Boolean.FALSE;
+
+    }
+
+    /**
+     * 删除对象标签
+     *
+     * @param objectName 对象名称
+     * @return {@link Boolean} 是否成功
+     */
+    public Boolean deleteObjectTags( String objectName) {
+
+        DeleteObjectTagsArgs objectTagsArgs = DeleteObjectTagsArgs.builder()
+                .bucket(minioProperties.getBucketName()).object(objectName).build();
+
+        try {
+            minioClient.deleteObjectTags(objectTagsArgs);
+            return Boolean.TRUE;
+        }catch (Exception e) {
+            logger.error("deleteObjectTags {}", e.getMessage());
+        }
+
+        return Boolean.FALSE;
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

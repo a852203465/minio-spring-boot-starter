@@ -9,6 +9,8 @@ import java.util.List;
 /**
  * 桶政策参数
  *
+ * https://docs.min.io/docs/minio-bucket-replication-guide.html
+ *
  * @author Rong.Jia
  * @date 2021/08/05 11:03:11
  */

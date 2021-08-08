@@ -1,3 +1,5 @@
 # Auto Configure
 org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
-    cn.darkjrong.spring.boot.autoconfigure.MinioAutoConfiguration
+    cn.darkjrong.spring.boot.autoconfigure.MinioAutoConfiguration, \
+    cn.darkjrong.spring.boot.autoconfigure.MinioNotificationConfiguration,\
+    cn.darkjrong.spring.boot.autoconfigure.MinioMetricConfiguration

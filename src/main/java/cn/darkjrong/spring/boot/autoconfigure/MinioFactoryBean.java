@@ -2,10 +2,14 @@ package cn.darkjrong.spring.boot.autoconfigure;
 
 import cn.darkjrong.minio.MinioTemplate;
 import cn.hutool.core.lang.Assert;
+import cn.hutool.core.util.StrUtil;
 import io.minio.MinioClient;
+import okhttp3.OkHttpClient;
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.InitializingBean;
 
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.net.URL;
 
 
@@ -52,14 +56,66 @@ public class MinioFactoryBean implements FactoryBean<MinioTemplate>, Initializin
         Assert.notBlank(accessKey, "'accessKey' cannot be empty");
         Assert.notBlank(bucketName, "'bucketName' cannot be empty");
 
-        MinioClient minioClient = MinioClient.builder().endpoint(new URL(endpoint))
-                .credentials(accessKey, secretKey).build();
+        MinioClient.Builder builder = MinioClient.builder().endpoint(new URL(endpoint))
+                .credentials(accessKey, secretKey);
+
+        if (isConfiguredProxy()) {
+            builder.httpClient(createHttpClient());
+        }
+
+        MinioClient minioClient = builder.build();
+        minioClient.setTimeout(minioProperties.getConnectTimeout(), minioProperties.getWriteTimeout(), minioProperties.getReadTimeout());
 
         minioTemplate = new MinioTemplate(minioClient, minioProperties);
 
         if (!minioTemplate.bucketExists(bucketName)) {
             minioTemplate.makeBucket(bucketName);
         }
-
     }
+
+    /**
+     * 是否配置代理
+     * @return {@link Boolean}
+     */
+    private Boolean isConfiguredProxy() {
+        String httpHost = System.getProperty("http.proxyHost");
+        String httpPort = System.getProperty("http.proxyPort");
+        return StrUtil.isAllNotBlank(httpHost, httpPort);
+    }
+
+    /**
+     * 创建http客户端
+     *
+     * @return {@link OkHttpClient}
+     */
+    private OkHttpClient createHttpClient() {
+        String httpHost = System.getProperty("http.proxyHost");
+        String httpPort = System.getProperty("http.proxyPort");
+        OkHttpClient.Builder builder = new OkHttpClient.Builder();
+        if (httpHost != null)
+            builder.proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(httpHost, Integer.parseInt(httpPort))));
+        return builder.build();
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 }
