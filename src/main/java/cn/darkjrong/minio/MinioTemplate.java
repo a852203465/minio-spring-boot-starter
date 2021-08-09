@@ -1302,10 +1302,10 @@ public class MinioTemplate {
      *
      * @param bucketName bucket名称
      * @param events     事件 , 支持的事件类型：https://docs.min.io/docs/minio-bucket-notification-guide.html
-     * @return {@link List<Event>} 事件集合
+     * @return {@link List<NotificationRecords>} 事件集合
      * @throws MinioException minio异常
      */
-    public List<Event> listenBucketNotification(String bucketName, String[] events) throws MinioException {
+    public List<NotificationRecords> listenBucketNotification(String bucketName, String[] events) throws MinioException {
         return this.listenBucketNotification(bucketName, StrUtil.EMPTY, StrUtil.EMPTY, events);
     }
 
