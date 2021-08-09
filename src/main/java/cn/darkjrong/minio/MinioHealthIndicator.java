@@ -6,6 +6,7 @@ import org.springframework.boot.actuate.autoconfigure.web.server.ManagementConte
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.stereotype.Component;
 
 /**
  * 设置Minio运行状况指示器
@@ -13,6 +14,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
  * @author Rong.Jia
  * @date 2021/08/08 19:24:24
  */
+@Component
 @ConditionalOnClass(ManagementContextAutoConfiguration.class)
 public class MinioHealthIndicator implements HealthIndicator {
 
