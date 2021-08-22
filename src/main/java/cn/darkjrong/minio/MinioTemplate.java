@@ -4,6 +4,7 @@ import cn.darkjrong.minio.domain.BucketPolicyParam;
 import cn.darkjrong.minio.domain.BucketVersionStatus;
 import cn.darkjrong.minio.domain.ListObjectParam;
 import cn.darkjrong.minio.domain.RemoveObject;
+import cn.darkjrong.minio.exceptions.ExceptionEnum;
 import cn.darkjrong.minio.exceptions.MinioException;
 import cn.darkjrong.spring.boot.autoconfigure.MinioProperties;
 import cn.hutool.core.collection.CollectionUtil;
@@ -37,6 +38,8 @@ public class MinioTemplate {
 
     private static final Logger logger = LoggerFactory.getLogger(MinioTemplate.class);
     private static final String DATA_TMP = SystemUtil.get(SystemUtil.TMPDIR);
+    private static final Integer DURATION = 30;
+    private static final Integer ZERO = 0;
 
     private final MinioClient minioClient;
     private final MinioProperties minioProperties;
@@ -58,6 +61,8 @@ public class MinioTemplate {
      */
     public Boolean bucketExists(String bucketName) {
 
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+
         BucketExistsArgs bucketExistsArgs = BucketExistsArgs.builder()
                 .bucket(bucketName)
                 .build();
@@ -68,7 +73,7 @@ public class MinioTemplate {
             logger.error("bucketExists {}", e.getMessage());
         }
 
-        return Boolean.FALSE;
+        return Boolean.TRUE;
     }
 
     /**
@@ -80,6 +85,10 @@ public class MinioTemplate {
      * @throws MinioException minio异常
      */
     public StatObjectResponse statObject(String bucketName, String objectName) throws MinioException {
+
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
+
         return this.statObject(bucketName, objectName, null);
     }
 
@@ -91,6 +100,9 @@ public class MinioTemplate {
      * @throws MinioException minio异常
      */
     public StatObjectResponse statObject(String objectName) throws MinioException {
+
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
+
         return this.statObject(minioProperties.getBucketName(), objectName);
     }
 
@@ -105,22 +117,16 @@ public class MinioTemplate {
      */
     public StatObjectResponse statObject(String bucketName, String objectName, String versionId) throws MinioException {
 
-        StatObjectArgs statObjectArgs;
-        if (StrUtil.isBlank(versionId)) {
-            statObjectArgs = StatObjectArgs.builder()
-                    .bucket(bucketName)
-                    .object(objectName)
-                    .build();
-        } else {
-            statObjectArgs = StatObjectArgs.builder()
-                    .bucket(bucketName)
-                    .versionId(versionId)
-                    .object(objectName)
-                    .build();
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
+
+        StatObjectArgs.Builder builder = StatObjectArgs.builder().bucket(bucketName).object(objectName);
+        if (StrUtil.isNotBlank(versionId)) {
+            builder.versionId(versionId);
         }
 
         try {
-            return minioClient.statObject(statObjectArgs);
+            return minioClient.statObject(builder.build());
         } catch (Exception e) {
             logger.error("statObject {}", e.getMessage());
             throw new MinioException(e.getMessage());
@@ -136,6 +142,9 @@ public class MinioTemplate {
      * @throws MinioException minio异常
      */
     public byte[] getObject(String objectName) throws MinioException {
+
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
+
         return this.getObject(minioProperties.getBucketName(), objectName);
     }
 
@@ -148,6 +157,9 @@ public class MinioTemplate {
      * @throws MinioException minio异常
      */
     public byte[] getObject(String bucketName, String objectName) throws MinioException {
+
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
 
         GetObjectArgs getObjectArgs = GetObjectArgs.builder()
                 .bucket(bucketName)
@@ -172,6 +184,10 @@ public class MinioTemplate {
      */
     public void downloadObject(String bucketName, String objectName, String fileName) throws MinioException {
 
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(fileName, ExceptionEnum.FILE_NAME_CANNOT_BE_EMPTY);
+
         DownloadObjectArgs args = DownloadObjectArgs.builder()
                 .filename(fileName)
                 .object(objectName)
@@ -194,6 +210,10 @@ public class MinioTemplate {
      * @throws MinioException minio异常
      */
     public void downloadObject(String objectName, String fileName) throws MinioException {
+
+        MinioUtils.notEmpty(fileName, ExceptionEnum.FILE_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
+
         this.downloadObject(minioProperties.getBucketName(), objectName, fileName);
     }
 
@@ -210,6 +230,10 @@ public class MinioTemplate {
      * @throws MinioException minio异常
      */
     public void copyObject(String srcBucketName, String targetBucketName, String objectName) throws MinioException {
+
+        MinioUtils.notEmpty(srcBucketName, ExceptionEnum.SOURCE_BUCKET_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(targetBucketName, ExceptionEnum.TARGET_BUCKET_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
 
         CopySource copySource = CopySource.builder()
                 .bucket(srcBucketName)
@@ -243,7 +267,13 @@ public class MinioTemplate {
      * @param srcObjectName    目标对象名称
      * @throws MinioException minio异常
      */
-    public void copyObject(String srcBucketName, String targetBucketName, String srcObjectName, String targetObjectName) throws MinioException {
+    public void copyObject(String srcBucketName, String targetBucketName,
+                           String srcObjectName, String targetObjectName) throws MinioException {
+
+        MinioUtils.notEmpty(srcBucketName, ExceptionEnum.SOURCE_BUCKET_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(targetBucketName, ExceptionEnum.TARGET_BUCKET_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(srcObjectName, ExceptionEnum.SOURCE_OBJECT_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(targetObjectName, ExceptionEnum.TARGET_OBJECT_CANNOT_BE_EMPTY);
 
         CopySource copySource = CopySource.builder()
                 .bucket(srcBucketName)
@@ -268,13 +298,24 @@ public class MinioTemplate {
     /**
      * 获得对象url
      *
-     * @param duration   超时时长
-     * @param unit       单位
+     * @param duration   超时时长，默认：30
+     * @param unit       单位, 默认：分钟
      * @param bucketName bucket名称
      * @param objectName 对象名称
      * @return {@link String} 对象url
      */
     public String getObjectUrl(String bucketName, String objectName, int duration, TimeUnit unit) {
+
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
+
+        if (ObjectUtil.isNull(duration) || duration <= ZERO) {
+            duration = DURATION;
+        }
+
+        if (ObjectUtil.isNull(unit)) {
+            unit = TimeUnit.MINUTES;
+        }
 
         GetPresignedObjectUrlArgs objectUrlArgs = GetPresignedObjectUrlArgs.builder()
                 .method(Method.GET)
@@ -311,7 +352,7 @@ public class MinioTemplate {
      * @return {@link String} 对象url
      */
     public String getObjectUrl(String objectName) {
-        return this.getObjectUrl(objectName, 30, TimeUnit.MINUTES);
+        return this.getObjectUrl(objectName, DURATION, TimeUnit.MINUTES);
     }
 
     /**
@@ -322,7 +363,7 @@ public class MinioTemplate {
      * @return {@link String} 对象url
      */
     public String getObjectUrl(String bucketName, String objectName) {
-        return this.getObjectUrl(bucketName, objectName, 30, TimeUnit.MINUTES);
+        return this.getObjectUrl(bucketName, objectName, DURATION, TimeUnit.MINUTES);
     }
 
     /**
@@ -335,22 +376,16 @@ public class MinioTemplate {
      */
     public Boolean removeObject(String bucketName, String objectName, String versionId) {
 
-        RemoveObjectArgs args;
-        if (StrUtil.isBlank(versionId)) {
-            args = RemoveObjectArgs.builder()
-                    .bucket(bucketName)
-                    .object(objectName)
-                    .build();
-        } else {
-            args = RemoveObjectArgs.builder()
-                    .bucket(bucketName)
-                    .versionId(versionId)
-                    .object(objectName)
-                    .build();
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
+
+        RemoveObjectArgs.Builder builder = RemoveObjectArgs.builder().bucket(bucketName).object(objectName);
+        if (StrUtil.isNotBlank(versionId)) {
+            builder.versionId(versionId);
         }
 
         try {
-            minioClient.removeObject(args);
+            minioClient.removeObject(builder.build());
             return Boolean.TRUE;
         } catch (Exception e) {
             logger.error("removeObject {}", e.getMessage());
@@ -367,6 +402,10 @@ public class MinioTemplate {
      * @return {@link Boolean} 是否成功
      */
     public Boolean removeObject(String bucketName, String objectName) {
+
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
+
         return removeObject(bucketName, objectName, null);
     }
 
@@ -377,6 +416,9 @@ public class MinioTemplate {
      * @return {@link Boolean} 是否成功
      */
     public Boolean removeObject(String objectName) {
+
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
+
         return removeObject(minioProperties.getBucketName(), objectName);
     }
 
@@ -388,9 +430,12 @@ public class MinioTemplate {
      */
     public List<RemoveObject> removeObject(List<RemoveObject> removeObjects) {
 
+        MinioUtils.notEmpty(removeObjects, ExceptionEnum.THE_OBJECT_COLLECTION_CANNOT_BE_EMPTY);
+
         removeObjects.stream().filter(a -> StrUtil.isBlank(a.getBucketName()))
                 .forEach(a -> a.setBucketName(minioProperties.getBucketName()));
 
+        // key: bucket, value: 删除集合
         Map<String, List<RemoveObject>> removeObjectMap = removeObjects.stream()
                 .collect(Collectors.groupingBy(RemoveObject::getBucketName));
 
@@ -486,6 +531,8 @@ public class MinioTemplate {
      */
     public Boolean makeBucket(String bucketName, boolean objectLock) {
 
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+
         MakeBucketArgs makeBucketArgs = MakeBucketArgs.builder()
                 .bucket(bucketName)
                 .objectLock(objectLock)
@@ -508,6 +555,9 @@ public class MinioTemplate {
      * @return {@link Boolean} 是否成功
      */
     public Boolean makeBucket(String bucketName) {
+
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+
         return this.makeBucket(bucketName, Boolean.FALSE);
     }
 
@@ -521,7 +571,13 @@ public class MinioTemplate {
      */
     public Boolean setBucketVersion(String bucketName,
                                     BucketVersionStatus bucketVersionStatus,
-                                    Boolean mfaDelete) {
+                                    boolean mfaDelete) {
+
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+
+        if(ObjectUtil.isNull(bucketVersionStatus)) {
+            bucketVersionStatus = BucketVersionStatus.ENABLED;
+        }
 
         VersioningConfiguration versioning = new VersioningConfiguration(VersioningConfiguration.Status.fromString(bucketVersionStatus.getValue()),
                 mfaDelete);
@@ -550,6 +606,8 @@ public class MinioTemplate {
      */
     public VersioningConfiguration getBucketVersion(String bucketName) throws MinioException {
 
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+
         GetBucketVersioningArgs bucketVersioningArgs = GetBucketVersioningArgs.builder()
                 .bucket(bucketName)
                 .build();
@@ -567,13 +625,21 @@ public class MinioTemplate {
      *
      * @param bucketName    bucket名称
      * @param retentionMode 保留模式
-     * @param duration      持续时间
+     * @param duration      持续时间, 默认：30
      * @param isDays        是天？
      * @return {@link Boolean}
      */
     public Boolean setObjectLockConfiguration(String bucketName,
                                               RetentionMode retentionMode,
                                               int duration, boolean isDays) {
+
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        if (duration <= ZERO) {
+            duration = DURATION;
+        }
+        if (ObjectUtil.isNull(retentionMode)) {
+            retentionMode = RetentionMode.COMPLIANCE;
+        }
 
         RetentionDuration retentionDuration =
                 isDays ? new RetentionDurationDays(duration)
@@ -605,6 +671,8 @@ public class MinioTemplate {
      */
     public Boolean deleteObjectLockConfiguration(String bucketName) {
 
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+
         DeleteObjectLockConfigurationArgs lockConfigurationArgs = DeleteObjectLockConfigurationArgs.builder()
                 .bucket(bucketName)
                 .build();
@@ -627,6 +695,8 @@ public class MinioTemplate {
      * @throws MinioException minio异常
      */
     public ObjectLockConfiguration getObjectLockConfiguration(String bucketName) throws MinioException {
+
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
 
         GetObjectLockConfigurationArgs lockConfigurationArgs = GetObjectLockConfigurationArgs.builder()
                 .bucket(bucketName)
@@ -654,6 +724,9 @@ public class MinioTemplate {
                                       RetentionMode retentionMode,
                                       ZonedDateTime zonedDateTime,
                                       boolean bypassGovernanceMode) {
+
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
 
         Retention retention = new Retention(retentionMode, zonedDateTime);
 
