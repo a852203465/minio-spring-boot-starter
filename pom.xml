@@ -17,7 +17,7 @@
 
     <scm>
         <url>https://github.com/a852203465</url>
-        <connection>https://github.com/a852203465/cn.darkjrong.minio-spring-boot-starter.git</connection>
+        <connection>https://github.com/a852203465/minio-spring-boot-starter.git</connection>
     </scm>
 
     <properties>
