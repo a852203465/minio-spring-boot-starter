@@ -1,4 +1,4 @@
-package cn.darkjrong.minio.exceptions;
+package cn.darkjrong.minio.enums;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

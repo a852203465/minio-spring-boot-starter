@@ -1,5 +1,6 @@
-package cn.darkjrong.minio;
+package cn.darkjrong.minio.config;
 
+import cn.darkjrong.minio.MinioTemplate;
 import cn.darkjrong.spring.boot.autoconfigure.MinioProperties;
 import cn.hutool.core.util.ObjectUtil;
 import org.springframework.boot.actuate.autoconfigure.web.server.ManagementContextAutoConfiguration;

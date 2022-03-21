@@ -92,8 +92,9 @@ public class MinioFactoryBean implements FactoryBean<MinioTemplate>, Initializin
         String httpHost = System.getProperty("http.proxyHost");
         String httpPort = System.getProperty("http.proxyPort");
         OkHttpClient.Builder builder = new OkHttpClient.Builder();
-        if (httpHost != null)
+        if (httpHost != null) {
             builder.proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(httpHost, Integer.parseInt(httpPort))));
+        }
         return builder.build();
     }
 

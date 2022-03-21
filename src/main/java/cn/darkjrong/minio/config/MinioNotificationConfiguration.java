@@ -1,7 +1,9 @@
-package cn.darkjrong.spring.boot.autoconfigure;
+package cn.darkjrong.minio.config;
 
 import cn.darkjrong.minio.MinioTemplate;
 import cn.darkjrong.minio.annotations.MinioNotification;
+import cn.darkjrong.spring.boot.autoconfigure.MinioAutoConfiguration;
+import cn.darkjrong.spring.boot.autoconfigure.MinioProperties;
 import cn.hutool.core.collection.CollectionUtil;
 import io.minio.messages.NotificationRecords;
 import org.slf4j.Logger;

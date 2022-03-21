@@ -1,6 +1,6 @@
 package cn.darkjrong.minio;
 
-import cn.darkjrong.minio.exceptions.ExceptionEnum;
+import cn.darkjrong.minio.enums.ExceptionEnum;
 import cn.hutool.core.lang.Assert;
 import cn.hutool.core.util.ObjectUtil;
 import io.minio.Result;
@@ -19,7 +19,7 @@ import java.util.stream.StreamSupport;
  * @author Rong.Jia
  * @date 2021/08/05 08:27:54
  */
-public class MinioUtils {
+class MinioUtils {
 
     private static final Logger logger = LoggerFactory.getLogger(MinioUtils.class);
 

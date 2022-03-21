@@ -1,10 +1,10 @@
 package cn.darkjrong.minio;
 
 import cn.darkjrong.minio.domain.BucketPolicyParam;
-import cn.darkjrong.minio.domain.BucketVersionStatus;
+import cn.darkjrong.minio.enums.BucketVersionStatus;
 import cn.darkjrong.minio.domain.ListObjectParam;
 import cn.darkjrong.minio.domain.RemoveObject;
-import cn.darkjrong.minio.exceptions.ExceptionEnum;
+import cn.darkjrong.minio.enums.ExceptionEnum;
 import cn.darkjrong.minio.exceptions.MinioException;
 import cn.darkjrong.spring.boot.autoconfigure.MinioProperties;
 import cn.hutool.core.collection.CollectionUtil;
@@ -49,6 +49,11 @@ public class MinioTemplate {
         this.minioProperties = minioProperties;
     }
 
+    /**
+     * 获取minio客户端
+     *
+     * @return {@link MinioClient}
+     */
     public MinioClient getMinioClient() {
         return minioClient;
     }

@@ -1,5 +1,7 @@
-package cn.darkjrong.spring.boot.autoconfigure;
+package cn.darkjrong.minio.config;
 
+import cn.darkjrong.spring.boot.autoconfigure.MinioAutoConfiguration;
+import cn.darkjrong.spring.boot.autoconfigure.MinioProperties;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.minio.MinioClient;

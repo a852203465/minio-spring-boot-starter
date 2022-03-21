@@ -18,7 +18,7 @@ public class MinioProperties {
     /**
      *  是否开启, 默认:false
      */
-    private Boolean enabled = Boolean.FALSE;
+    private boolean enabled = Boolean.FALSE;
 
     /**
      * 对象存储服务的URL

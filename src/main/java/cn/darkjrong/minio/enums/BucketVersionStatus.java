@@ -1,5 +1,6 @@
-package cn.darkjrong.minio.domain;
+package cn.darkjrong.minio.enums;
 
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 /**
@@ -9,17 +10,14 @@ import lombok.Getter;
  * @date 2021/08/05 08:51:54
  */
 @Getter
+@AllArgsConstructor
 public enum BucketVersionStatus {
 
     // 开启
     ENABLED("Enabled"),
     SUSPENDED("Suspended");
 
-    private String value;
-
-    BucketVersionStatus(String value) {
-        this.value = value;
-    }
+    private final String value;
 
 
 }
