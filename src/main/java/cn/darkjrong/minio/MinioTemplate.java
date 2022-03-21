@@ -241,6 +241,41 @@ public class MinioTemplate {
      * 复制对象
      *
      * <p>
+     * 在bucket中复制一份
+     * </p>
+     *
+     * @param bucketName    bucket名称
+     * @param objectName       对象名称
+     * @return {@link String} 目标对象名
+     * @throws MinioException minio异常
+     */
+    public String copyObject(String bucketName, String objectName) throws MinioException {
+        String target = StrUtil.sub(objectName, ZERO , StrUtil.lastIndexOfIgnoreCase(objectName, StrUtil.SLASH)) + StrUtil.DOT + FileUtil.extName(objectName);
+        return copyObject(bucketName, bucketName, objectName, target);
+    }
+
+    /**
+     * 复制对象
+     *
+     * <p>
+     * 在bucket中复制一份
+     * </p>
+     *
+     * @param objectName       对象名称
+     * @return {@link String} 目标对象名
+     * @throws MinioException minio异常
+     */
+    public String copyObject(String objectName) throws MinioException {
+        String target = StrUtil.sub(objectName, ZERO , StrUtil.lastIndexOfIgnoreCase(objectName, StrUtil.SLASH)) +
+                StrUtil.SLASH + IdUtil.fastSimpleUUID() + DateUtil.current() + StrUtil.DOT + FileUtil.extName(objectName);
+        return copyObject(minioProperties.getBucketName(), minioProperties.getBucketName(), objectName, target);
+    }
+
+
+    /**
+     * 复制对象
+     *
+     * <p>
      * 将objectName从srcBucketName复制到targetBucketName的targetObjectName
      * </p>
      *

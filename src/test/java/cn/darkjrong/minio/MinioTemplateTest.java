@@ -60,7 +60,7 @@ public class MinioTemplateTest {
     @Test
     public void getFileUrl() {
 
-        System.out.println(minioTemplate.getObjectUrl("1.jpeg"));
+        System.out.println(minioTemplate.getObjectUrl("20220321/d3ce87f32d1d4521aa75def974a044b21647845867860.jpeg"));
 
     }
 
@@ -81,7 +81,13 @@ public class MinioTemplateTest {
         }
     }
 
+    @Test
+    public void copyObject1() {
 
+        System.out.println(minioTemplate.copyObject("20220321/420ec82ff3624a059d326a9a812d83481647844979194.jpeg"));
+
+
+    }
 
 
 
