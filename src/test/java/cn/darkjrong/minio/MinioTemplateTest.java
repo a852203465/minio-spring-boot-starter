@@ -3,20 +3,12 @@ package cn.darkjrong.minio;
 import cn.darkjrong.spring.boot.autoconfigure.MinioAutoConfiguration;
 import cn.darkjrong.spring.boot.autoconfigure.MinioFactoryBean;
 import cn.darkjrong.spring.boot.autoconfigure.MinioProperties;
-import io.minio.BucketExistsArgs;
-import io.minio.MinioClient;
-import io.minio.SetBucketPolicyArgs;
-import io.minio.errors.*;
+import io.minio.messages.Bucket;
 import org.junit.Before;
 import org.junit.Test;
-import sun.net.www.content.image.jpeg;
 
 import java.io.File;
-import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
+import java.util.List;
 
 /**
  * minio 测试
@@ -32,10 +24,10 @@ public class MinioTemplateTest {
     public void before() throws Exception {
         MinioProperties properties = new MinioProperties();
         properties.setEnabled(true);
-        properties.setEndpoint("http://192.168.42.133:9000");
+        properties.setEndpoint("http://10.20.54.133:9000");
         properties.setAccessKey("minio");
         properties.setSecretKey("minio123");
-        properties.setBucketName("data");
+        properties.setBucketName("test");
 
         MinioFactoryBean minioFactoryBean = new MinioAutoConfiguration(properties).minioFactoryBean();
         minioFactoryBean.afterPropertiesSet();
@@ -47,21 +39,21 @@ public class MinioTemplateTest {
     @Test
     public void bucketExists() {
 
-        System.out.println(minioTemplate.bucketExists("data"));
+        System.out.println(minioTemplate.bucketExists("test"));
 
     }
 
     @Test
     public void uploadFile() {
 
-        minioTemplate.putObject(new File("F:\\我的图片\\1.jpeg"));
+        System.out.println(minioTemplate.putObject(new File("F:\\我的图片\\桌面\\1.jpeg")));
 
     }
 
     @Test
     public void downloadFile() {
 
-        minioTemplate.downloadObject("1.jpeg", "F:\\我的图片\\3.jpeg");
+        minioTemplate.downloadObject("1.jpeg", "F:\\我的图片\\桌面\\1.jpeg");
 
     }
 
@@ -72,10 +64,22 @@ public class MinioTemplateTest {
 
     }
 
+    @Test
+    public void copyObject() {
+
+        String object = minioTemplate.copyObject("scm", "test", "/2022/03/03/08c0c0ae75a04532b5ac19611c776a8f.docx");
+        System.out.println(object);
+
+    }
 
 
-
-
+    @Test
+    public void listBuckets() {
+        List<Bucket> bucketList = minioTemplate.listBuckets();
+        for (Bucket bucket : bucketList) {
+            System.out.println(bucket.name());
+        }
+    }
 
 
 

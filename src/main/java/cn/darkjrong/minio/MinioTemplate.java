@@ -1,14 +1,17 @@
 package cn.darkjrong.minio;
 
 import cn.darkjrong.minio.domain.BucketPolicyParam;
-import cn.darkjrong.minio.enums.BucketVersionStatus;
 import cn.darkjrong.minio.domain.ListObjectParam;
 import cn.darkjrong.minio.domain.RemoveObject;
+import cn.darkjrong.minio.enums.BucketVersionStatus;
 import cn.darkjrong.minio.enums.ExceptionEnum;
 import cn.darkjrong.minio.exceptions.MinioException;
 import cn.darkjrong.spring.boot.autoconfigure.MinioProperties;
 import cn.hutool.core.collection.CollectionUtil;
+import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.IoUtil;
+import cn.hutool.core.lang.Assert;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
@@ -19,12 +22,16 @@ import io.minio.http.Method;
 import io.minio.messages.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.time.ZonedDateTime;
-import java.util.*;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -59,7 +66,7 @@ public class MinioTemplate {
     }
 
     /**
-     * 判断桶是否存在
+     * 判断bucket是否存在
      *
      * @param bucketName bucket名称
      * @return {@link Boolean} 是否存在
@@ -67,18 +74,15 @@ public class MinioTemplate {
     public Boolean bucketExists(String bucketName) {
 
         MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
-
         BucketExistsArgs bucketExistsArgs = BucketExistsArgs.builder()
                 .bucket(bucketName)
                 .build();
-
         try {
             return minioClient.bucketExists(bucketExistsArgs);
         } catch (Exception e) {
-            logger.error("bucketExists {}", e.getMessage());
+            logger.error("判断bucket是否存在异常 {}", e.getMessage());
         }
-
-        return Boolean.TRUE;
+        return Boolean.FALSE;
     }
 
     /**
@@ -90,10 +94,8 @@ public class MinioTemplate {
      * @throws MinioException minio异常
      */
     public StatObjectResponse statObject(String bucketName, String objectName) throws MinioException {
-
         MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
         MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
-
         return this.statObject(bucketName, objectName, null);
     }
 
@@ -105,9 +107,7 @@ public class MinioTemplate {
      * @throws MinioException minio异常
      */
     public StatObjectResponse statObject(String objectName) throws MinioException {
-
         MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
-
         return this.statObject(minioProperties.getBucketName(), objectName);
     }
 
@@ -133,8 +133,8 @@ public class MinioTemplate {
         try {
             return minioClient.statObject(builder.build());
         } catch (Exception e) {
-            logger.error("statObject {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("获取对象信息异常 {}", e.getMessage());
+            throw new MinioException("获取对象信息异常", e);
         }
 
     }
@@ -147,9 +147,7 @@ public class MinioTemplate {
      * @throws MinioException minio异常
      */
     public byte[] getObject(String objectName) throws MinioException {
-
         MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
-
         return this.getObject(minioProperties.getBucketName(), objectName);
     }
 
@@ -174,8 +172,8 @@ public class MinioTemplate {
         try {
             return IoUtil.readBytes(minioClient.getObject(getObjectArgs));
         } catch (Exception e) {
-            logger.error("getObject {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("获取对象异常 {}", e.getMessage());
+            throw new MinioException("获取对象异常", e);
         }
     }
 
@@ -202,8 +200,8 @@ public class MinioTemplate {
         try {
             minioClient.downloadObject(args);
         } catch (Exception e) {
-            logger.error("downloadObject {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("下载对象异常 {}", e.getMessage());
+            throw new MinioException("下载对象异常", e);
         }
     }
 
@@ -232,31 +230,11 @@ public class MinioTemplate {
      * @param srcBucketName    源bucket名称
      * @param targetBucketName 目标bucket 名称
      * @param objectName       对象名称
+     * @return {@link String} 目标对象名
      * @throws MinioException minio异常
      */
-    public void copyObject(String srcBucketName, String targetBucketName, String objectName) throws MinioException {
-
-        MinioUtils.notEmpty(srcBucketName, ExceptionEnum.SOURCE_BUCKET_CANNOT_BE_EMPTY);
-        MinioUtils.notEmpty(targetBucketName, ExceptionEnum.TARGET_BUCKET_CANNOT_BE_EMPTY);
-        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
-
-        CopySource copySource = CopySource.builder()
-                .bucket(srcBucketName)
-                .build();
-
-        CopyObjectArgs copyObjectArgs = CopyObjectArgs.builder()
-                .bucket(targetBucketName)
-                .object(objectName)
-                .source(copySource)
-                .build();
-
-        try {
-            minioClient.copyObject(copyObjectArgs);
-        } catch (Exception e) {
-            logger.error("copyObject {}", e.getMessage());
-            throw new MinioException(e.getMessage());
-        }
-
+    public String copyObject(String srcBucketName, String targetBucketName, String objectName) throws MinioException {
+        return copyObject(srcBucketName, targetBucketName, objectName, objectName);
     }
 
     /**
@@ -269,10 +247,11 @@ public class MinioTemplate {
      * @param srcBucketName    源bucket名称
      * @param targetBucketName 目标bucket 名称
      * @param srcObjectName    源对象名称
-     * @param srcObjectName    目标对象名称
+     * @param targetObjectName 目标对象的名字
+     * @return {@link String} 目标对象名
      * @throws MinioException minio异常
      */
-    public void copyObject(String srcBucketName, String targetBucketName,
+    public String copyObject(String srcBucketName, String targetBucketName,
                            String srcObjectName, String targetObjectName) throws MinioException {
 
         MinioUtils.notEmpty(srcBucketName, ExceptionEnum.SOURCE_BUCKET_CANNOT_BE_EMPTY);
@@ -292,12 +271,11 @@ public class MinioTemplate {
                 .build();
 
         try {
-            minioClient.copyObject(copyObjectArgs);
+            return minioClient.copyObject(copyObjectArgs).object();
         } catch (Exception e) {
-            logger.error("copyObject {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("复制对象异常 {}", e.getMessage());
+            throw new MinioException("复制对象异常", e);
         }
-
     }
 
     /**
@@ -308,19 +286,14 @@ public class MinioTemplate {
      * @param bucketName bucket名称
      * @param objectName 对象名称
      * @return {@link String} 对象url
+     * @throws MinioException minio异常
      */
-    public String getObjectUrl(String bucketName, String objectName, int duration, TimeUnit unit) {
+    public String getObjectUrl(String bucketName, String objectName, int duration, TimeUnit unit) throws MinioException {
 
         MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
         MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
-
-        if (ObjectUtil.isNull(duration) || duration <= ZERO) {
-            duration = DURATION;
-        }
-
-        if (ObjectUtil.isNull(unit)) {
-            unit = TimeUnit.MINUTES;
-        }
+        if (ObjectUtil.isNull(duration) || duration <= ZERO) duration = DURATION;
+        if (ObjectUtil.isNull(unit)) unit = TimeUnit.MINUTES;
 
         GetPresignedObjectUrlArgs objectUrlArgs = GetPresignedObjectUrlArgs.builder()
                 .method(Method.GET)
@@ -332,10 +305,9 @@ public class MinioTemplate {
         try {
             return minioClient.getPresignedObjectUrl(objectUrlArgs);
         } catch (Exception e) {
-            logger.error("getObjectUrl {}", e.getMessage());
+            logger.error("获取对象URL异常 {}", e.getMessage());
+            throw new MinioException("获取对象URL异常", e);
         }
-
-        return null;
     }
 
     /**
@@ -345,8 +317,9 @@ public class MinioTemplate {
      * @param duration   超时时长
      * @param unit       单位
      * @return {@link String} 对象url
+     * @throws MinioException minio异常
      */
-    public String getObjectUrl(String objectName, int duration, TimeUnit unit) {
+    public String getObjectUrl(String objectName, int duration, TimeUnit unit) throws MinioException {
         return this.getObjectUrl(minioProperties.getBucketName(), objectName, duration, unit);
     }
 
@@ -355,8 +328,9 @@ public class MinioTemplate {
      *
      * @param objectName 对象名称
      * @return {@link String} 对象url
+     * @throws MinioException minio异常
      */
-    public String getObjectUrl(String objectName) {
+    public String getObjectUrl(String objectName) throws MinioException {
         return this.getObjectUrl(objectName, DURATION, TimeUnit.MINUTES);
     }
 
@@ -366,8 +340,9 @@ public class MinioTemplate {
      * @param bucketName bucket名称
      * @param objectName 对象名称
      * @return {@link String} 对象url
+     * @throws MinioException minio异常
      */
-    public String getObjectUrl(String bucketName, String objectName) {
+    public String getObjectUrl(String bucketName, String objectName) throws MinioException {
         return this.getObjectUrl(bucketName, objectName, DURATION, TimeUnit.MINUTES);
     }
 
@@ -393,7 +368,7 @@ public class MinioTemplate {
             minioClient.removeObject(builder.build());
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("removeObject {}", e.getMessage());
+            logger.error("删除对象异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -407,10 +382,6 @@ public class MinioTemplate {
      * @return {@link Boolean} 是否成功
      */
     public Boolean removeObject(String bucketName, String objectName) {
-
-        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
-        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
-
         return removeObject(bucketName, objectName, null);
     }
 
@@ -421,9 +392,6 @@ public class MinioTemplate {
      * @return {@link Boolean} 是否成功
      */
     public Boolean removeObject(String objectName) {
-
-        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
-
         return removeObject(minioProperties.getBucketName(), objectName);
     }
 
@@ -471,7 +439,7 @@ public class MinioTemplate {
                     logger.error("Error in deleting object " + deleteError.objectName() + "; " + deleteError.message());
                     removeObject = new RemoveObject(deleteError.bucketName(), deleteError.objectName());
                 } catch (Exception e) {
-                    logger.error("removeObject {}", e.getMessage());
+                    logger.error("删除对象异常 {}", e.getMessage());
                 }
             }
             return removeObject;
@@ -487,8 +455,7 @@ public class MinioTemplate {
      */
     public List<Item> listObjects(ListObjectParam listObjectParam) throws MinioException {
 
-        String bucketName = StrUtil.isBlank(listObjectParam.getBucketName())
-                ? minioProperties.getBucketName() : listObjectParam.getBucketName();
+        String bucketName = StrUtil.isBlank(listObjectParam.getBucketName()) ? minioProperties.getBucketName() : listObjectParam.getBucketName();
 
         Integer maxKeys = listObjectParam.getMaxKeys();
         String prefix = listObjectParam.getPrefix();
@@ -497,14 +464,8 @@ public class MinioTemplate {
 
         ListObjectsArgs.Builder builder = ListObjectsArgs.builder();
         builder.bucket(bucketName).includeVersions(includeVersions).maxKeys(maxKeys);
-        if (StrUtil.isNotBlank(startAfter)) {
-            builder.startAfter(startAfter);
-        }
-
-        if (StrUtil.isNotBlank(prefix)) {
-            builder.prefix(prefix);
-        }
-
+        if (StrUtil.isNotBlank(startAfter)) builder.startAfter(startAfter);
+        if (StrUtil.isNotBlank(prefix)) builder.prefix(prefix);
         ListObjectsArgs objectsArgs = builder.build();
 
         Iterable<Result<Item>> listObjects = minioClient.listObjects(objectsArgs);
@@ -522,8 +483,8 @@ public class MinioTemplate {
         try {
             return minioClient.listBuckets();
         } catch (Exception e) {
-            logger.error("listBuckets {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("获取bucket集合异常 {}", e.getMessage());
+            throw new MinioException("获取bucket集合异常", e);
         }
     }
 
@@ -547,7 +508,7 @@ public class MinioTemplate {
             minioClient.makeBucket(makeBucketArgs);
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("makeBucket {}", e.getMessage());
+            logger.error("创建 bucket 异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -560,9 +521,6 @@ public class MinioTemplate {
      * @return {@link Boolean} 是否成功
      */
     public Boolean makeBucket(String bucketName) {
-
-        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
-
         return this.makeBucket(bucketName, Boolean.FALSE);
     }
 
@@ -570,7 +528,7 @@ public class MinioTemplate {
      * bucket 版本控制
      *
      * @param bucketName          bucket名称
-     * @param bucketVersionStatus 桶版本状态
+     * @param bucketVersionStatus bucket版本状态
      * @param mfaDelete           mfa删除
      * @return {@link Boolean}
      */
@@ -579,13 +537,8 @@ public class MinioTemplate {
                                     boolean mfaDelete) {
 
         MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
-
-        if(ObjectUtil.isNull(bucketVersionStatus)) {
-            bucketVersionStatus = BucketVersionStatus.ENABLED;
-        }
-
-        VersioningConfiguration versioning = new VersioningConfiguration(VersioningConfiguration.Status.fromString(bucketVersionStatus.getValue()),
-                mfaDelete);
+        if(ObjectUtil.isNull(bucketVersionStatus)) bucketVersionStatus = BucketVersionStatus.ENABLED;
+        VersioningConfiguration versioning = new VersioningConfiguration(VersioningConfiguration.Status.fromString(bucketVersionStatus.getValue()), mfaDelete);
 
         SetBucketVersioningArgs bucketVersioningArgs = SetBucketVersioningArgs.builder()
                 .bucket(bucketName)
@@ -596,7 +549,7 @@ public class MinioTemplate {
             minioClient.setBucketVersioning(bucketVersioningArgs);
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("setBucketVersion {}", e.getMessage());
+            logger.error("设置bucket版本异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -620,8 +573,8 @@ public class MinioTemplate {
         try {
             return minioClient.getBucketVersioning(bucketVersioningArgs);
         } catch (Exception e) {
-            logger.error("getBucketVersion {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("获取bucket版本异常 {}", e.getMessage());
+            throw new MinioException("获取bucket版本异常", e);
         }
     }
 
@@ -634,24 +587,14 @@ public class MinioTemplate {
      * @param isDays        是天？
      * @return {@link Boolean}
      */
-    public Boolean setObjectLockConfiguration(String bucketName,
-                                              RetentionMode retentionMode,
-                                              int duration, boolean isDays) {
+    public Boolean setObjectLockConfiguration(String bucketName, RetentionMode retentionMode, int duration, boolean isDays) {
 
         MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
-        if (duration <= ZERO) {
-            duration = DURATION;
-        }
-        if (ObjectUtil.isNull(retentionMode)) {
-            retentionMode = RetentionMode.COMPLIANCE;
-        }
 
-        RetentionDuration retentionDuration =
-                isDays ? new RetentionDurationDays(duration)
-                        : new RetentionDurationYears(duration);
-
-        ObjectLockConfiguration objectLockConfiguration
-                = new ObjectLockConfiguration(retentionMode, retentionDuration);
+        if (duration <= ZERO) duration = DURATION;
+        if (ObjectUtil.isNull(retentionMode)) retentionMode = RetentionMode.COMPLIANCE;
+        RetentionDuration retentionDuration = isDays ? new RetentionDurationDays(duration) : new RetentionDurationYears(duration);
+        ObjectLockConfiguration objectLockConfiguration = new ObjectLockConfiguration(retentionMode, retentionDuration);
 
         SetObjectLockConfigurationArgs lockConfigurationArgs = SetObjectLockConfigurationArgs.builder()
                 .bucket(bucketName)
@@ -662,7 +605,7 @@ public class MinioTemplate {
             minioClient.setObjectLockConfiguration(lockConfigurationArgs);
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("setObjectLockConfiguration {}", e.getMessage());
+            logger.error("设置对象锁配置异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -686,7 +629,7 @@ public class MinioTemplate {
             minioClient.deleteObjectLockConfiguration(lockConfigurationArgs);
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("deleteObjectLockConfiguration {}", e.getMessage());
+            logger.error("删除对象锁配置异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -710,8 +653,8 @@ public class MinioTemplate {
         try {
             return minioClient.getObjectLockConfiguration(lockConfigurationArgs);
         } catch (Exception e) {
-            logger.error("getObjectLockConfiguration {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("获取对象锁配置异常 {}", e.getMessage());
+            throw new MinioException("获取对象锁配置异常", e);
         }
     }
 
@@ -725,10 +668,7 @@ public class MinioTemplate {
      * @param bypassGovernanceMode 绕过治理模式
      * @return {@link Boolean}
      */
-    public Boolean setObjectRetention(String bucketName, String objectName,
-                                      RetentionMode retentionMode,
-                                      ZonedDateTime zonedDateTime,
-                                      boolean bypassGovernanceMode) {
+    public Boolean setObjectRetention(String bucketName, String objectName, RetentionMode retentionMode, ZonedDateTime zonedDateTime, boolean bypassGovernanceMode) {
 
         MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
         MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
@@ -746,7 +686,7 @@ public class MinioTemplate {
             minioClient.setObjectRetention(setObjectRetentionArgs);
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("setObjectRetention {}", e.getMessage());
+            logger.error("设置对象保留时间异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -761,12 +701,8 @@ public class MinioTemplate {
      * @param bypassGovernanceMode 绕过治理模式
      * @return {@link Boolean}
      */
-    public Boolean setObjectRetention(String objectName,
-                                      RetentionMode retentionMode,
-                                      ZonedDateTime zonedDateTime,
-                                      boolean bypassGovernanceMode) {
-        return this.setObjectRetention(minioProperties.getBucketName(), objectName,
-                retentionMode, zonedDateTime, bypassGovernanceMode);
+    public Boolean setObjectRetention(String objectName, RetentionMode retentionMode, ZonedDateTime zonedDateTime, boolean bypassGovernanceMode) {
+        return this.setObjectRetention(minioProperties.getBucketName(), objectName, retentionMode, zonedDateTime, bypassGovernanceMode);
     }
 
     /**
@@ -778,7 +714,8 @@ public class MinioTemplate {
      * @throws MinioException minio异常
      */
     public Retention getObjectRetention(String bucketName, String objectName) throws MinioException {
-
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
         GetObjectRetentionArgs objectRetentionArgs = GetObjectRetentionArgs.builder()
                 .bucket(bucketName)
                 .object(objectName)
@@ -787,8 +724,8 @@ public class MinioTemplate {
         try {
             return minioClient.getObjectRetention(objectRetentionArgs);
         } catch (Exception e) {
-            logger.error("getObjectRetention {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("获取对象保留信息异常 {}", e.getMessage());
+            throw new MinioException("获取对象保留信息异常", e);
         }
     }
 
@@ -811,7 +748,8 @@ public class MinioTemplate {
      * @return {@link Boolean} 是否成功
      */
     public Boolean enableObjectLegalHold(String bucketName, String objectName) {
-
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
         EnableObjectLegalHoldArgs objectLegalHoldArgs = EnableObjectLegalHoldArgs.builder()
                 .bucket(bucketName)
                 .object(objectName)
@@ -845,7 +783,8 @@ public class MinioTemplate {
      * @return {@link Boolean} 是否成功
      */
     public Boolean disableObjectLegalHold(String bucketName, String objectName) {
-
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
         DisableObjectLegalHoldArgs objectLegalHoldArgs = DisableObjectLegalHoldArgs.builder()
                 .bucket(bucketName)
                 .object(objectName)
@@ -879,7 +818,8 @@ public class MinioTemplate {
      * @return {@link Boolean} 是否成功
      */
     public Boolean isObjectLegalHoldEnabled(String bucketName, String objectName) {
-
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
         IsObjectLegalHoldEnabledArgs objectLegalHoldArgs = IsObjectLegalHoldEnabledArgs.builder()
                 .bucket(bucketName)
                 .object(objectName)
@@ -911,20 +851,16 @@ public class MinioTemplate {
      * @return {@link Boolean} 是否成功
      */
     public Boolean removeBucket(String bucketName) {
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        if (!bucketExists(bucketName)) return Boolean.TRUE;
 
-        if (!bucketExists(bucketName)) {
-            return Boolean.TRUE;
-        }
-
-        RemoveBucketArgs removeBucketArgs = RemoveBucketArgs.builder()
-                .bucket(bucketName)
-                .build();
+        RemoveBucketArgs removeBucketArgs = RemoveBucketArgs.builder().bucket(bucketName).build();
 
         try {
             minioClient.removeBucket(removeBucketArgs);
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("removeBucket {}", e.getMessage());
+            logger.error("删除bucket异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -937,26 +873,27 @@ public class MinioTemplate {
      * @param objectName  对象名称
      * @param file        文件
      * @param contentType 内容类型
+     * @return {@link String} 上传对象名
      * @throws MinioException minio异常
      */
-    public void putObject(String bucketName, String objectName,
-                          InputStream file, String contentType) throws MinioException {
-
+    public String putObject(String bucketName, String objectName, InputStream file, String contentType) throws MinioException {
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(file, ExceptionEnum.FILE_NAME_CANNOT_BE_EMPTY);
+        objectName = MinioUtils.getDateFolder() + StrUtil.SLASH + objectName;
         try {
             PutObjectArgs.Builder builder = PutObjectArgs.builder()
                     .bucket(bucketName)
                     .object(objectName)
-                    .stream(file, file.available(), -1)
-                    .contentType(contentType);
+                    .stream(file, file.available(), -1);
 
-            if (StrUtil.isNotBlank(contentType)) {
-                builder.contentType(contentType);
-            }
-
-            minioClient.putObject(builder.build());
+            if (StrUtil.isNotBlank(contentType)) builder.contentType(contentType);
+            return minioClient.putObject(builder.build()).object();
         } catch (Exception e) {
-            logger.error("putObject {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("对象 : {} 上传异常 {}", objectName, e.getMessage());
+            throw new MinioException("上传对象异常", e);
+        }finally {
+            IoUtil.close(file);
         }
     }
 
@@ -966,11 +903,11 @@ public class MinioTemplate {
      * @param objectName  对象名称
      * @param file        文件
      * @param contentType 内容类型
+     * @return {@link String} 上传对象名
      * @throws MinioException minio异常
      */
-    public void putObject(String objectName,
-                          InputStream file, String contentType) throws MinioException {
-        this.putObject(minioProperties.getBucketName(), objectName, file, contentType);
+    public String putObject(String objectName, InputStream file, String contentType) throws MinioException {
+        return this.putObject(minioProperties.getBucketName(), objectName, file, contentType);
     }
 
     /**
@@ -979,11 +916,11 @@ public class MinioTemplate {
      * @param bucketName bucket名称
      * @param objectName 对象名称
      * @param file       文件
+     * @return {@link String} 上传对象名
      * @throws MinioException minio异常
      */
-    public void putObject(String bucketName, String objectName,
-                          InputStream file) throws MinioException {
-        this.putObject(bucketName, objectName, file, null);
+    public String putObject(String bucketName, String objectName, InputStream file) throws MinioException {
+        return this.putObject(bucketName, objectName, file, null);
     }
 
     /**
@@ -991,10 +928,11 @@ public class MinioTemplate {
      *
      * @param objectName 对象名称
      * @param file       文件
+     * @return {@link String} 上传对象名
      * @throws MinioException minio异常
      */
-    public void putObject(String objectName, InputStream file) throws MinioException {
-        this.putObject(minioProperties.getBucketName(), objectName, file);
+    public String putObject(String objectName, InputStream file) throws MinioException {
+        return this.putObject(minioProperties.getBucketName(), objectName, file);
     }
 
     /**
@@ -1003,10 +941,17 @@ public class MinioTemplate {
      * @param bucketName bucket名称
      * @param objectName 对象名称
      * @param file       文件
+     * @return {@link String} 上传对象名
      * @throws MinioException minio异常
      */
-    public void putObject(String bucketName, String objectName, byte[] file) throws MinioException {
-        this.putObject(bucketName, objectName, new ByteArrayInputStream(file));
+    public String putObject(String bucketName, String objectName, MultipartFile file) throws MinioException {
+        Assert.isFalse(file.isEmpty(), ExceptionEnum.FILE_NAME_CANNOT_BE_EMPTY.getValue());
+        try {
+            return this.putObject(bucketName, objectName, file.getInputStream(), null);
+        }catch (IOException e) {
+            logger.error("上传对象异常 {}", e.getMessage());
+            throw new MinioException("上传对象异常", e);
+        }
     }
 
     /**
@@ -1014,10 +959,50 @@ public class MinioTemplate {
      *
      * @param objectName 对象名称
      * @param file       文件
+     * @return {@link String} 上传对象名
      * @throws MinioException minio异常
      */
-    public void putObject(String objectName, byte[] file) throws MinioException {
-        this.putObject(minioProperties.getBucketName(), objectName, file);
+    public String putObject(String objectName, MultipartFile file) throws MinioException {
+        return this.putObject(minioProperties.getBucketName(), objectName, file);
+    }
+
+    /**
+     * 上传对象
+     *
+     * @param file       文件
+     * @return {@link String} 上传对象名
+     * @throws MinioException minio异常
+     */
+    public String putObject(MultipartFile file) throws MinioException {
+        Assert.isFalse(file.isEmpty(), ExceptionEnum.FILE_NAME_CANNOT_BE_EMPTY.getValue());
+        String extName = FileUtil.extName(file.getOriginalFilename());
+        Assert.notBlank(extName, "非法文件名称：" + file.getOriginalFilename());
+        return this.putObject(minioProperties.getBucketName(), IdUtil.fastSimpleUUID() + DateUtil.current() + StrUtil.DOT + extName, file);
+    }
+
+    /**
+     * 上传对象
+     *
+     * @param bucketName bucket名称
+     * @param objectName 对象名称
+     * @param file       文件
+     * @return {@link String} 上传对象名
+     * @throws MinioException minio异常
+     */
+    public String putObject(String bucketName, String objectName, byte[] file) throws MinioException {
+        return this.putObject(bucketName, objectName, new ByteArrayInputStream(file));
+    }
+
+    /**
+     * 上传对象
+     *
+     * @param objectName 对象名称
+     * @param file       文件
+     * @return {@link String} 上传对象名
+     * @throws MinioException minio异常
+     */
+    public String putObject(String objectName, byte[] file) throws MinioException {
+        return this.putObject(minioProperties.getBucketName(), objectName, file);
     }
 
     /**
@@ -1027,27 +1012,27 @@ public class MinioTemplate {
      * @param objectName  对象名称
      * @param file        文件
      * @param contentType 内容类型
+     * @return {@link String} 文件名
      * @throws MinioException minio异常
      */
-    public void putObject(String bucketName, String objectName, File file, String contentType) throws MinioException {
-
+    public String putObject(String bucketName, String objectName, File file, String contentType) throws MinioException {
+        MinioUtils.notEmpty(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY);
+        MinioUtils.notEmpty(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY);
+        Assert.isTrue(FileUtil.exist(file), ExceptionEnum.FILE_NAME_CANNOT_BE_EMPTY.getValue());
+        objectName = MinioUtils.getDateFolder() + StrUtil.SLASH + objectName;
         try {
 
             UploadObjectArgs.Builder builder = UploadObjectArgs.builder()
                     .bucket(bucketName)
                     .object(objectName)
                     .filename(file.getAbsolutePath());
+            if (StrUtil.isNotBlank(contentType)) builder.contentType(contentType);
 
-            if (StrUtil.isNotBlank(contentType)) {
-                builder.contentType(contentType);
-            }
-
-            minioClient.uploadObject(builder.build());
+            return minioClient.uploadObject(builder.build()).object();
         } catch (Exception e) {
-            logger.error("putObject {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("文件 : {} 上传异常,  {}", objectName, e.getMessage());
+            throw new MinioException("文件上传异常", e);
         }
-
     }
 
     /**
@@ -1056,10 +1041,11 @@ public class MinioTemplate {
      * @param bucketName bucket名称
      * @param objectName 对象名称
      * @param file       文件
+     * @return {@link String} 文件名
      * @throws MinioException minio异常
      */
-    public void putObject(String bucketName, String objectName, File file) throws MinioException {
-        this.putObject(bucketName, objectName, file, null);
+    public String putObject(String bucketName, String objectName, File file) throws MinioException {
+        return this.putObject(bucketName, objectName, file, null);
     }
 
     /**
@@ -1068,10 +1054,11 @@ public class MinioTemplate {
      * @param objectName  对象名称
      * @param contentType 内容类型
      * @param file        文件
+     * @return {@link String} 文件名
      * @throws MinioException minio异常
      */
-    public void putObject(String objectName, File file, String contentType) throws MinioException {
-        this.putObject(minioProperties.getBucketName(), objectName, file, contentType);
+    public String putObject(String objectName, File file, String contentType) throws MinioException {
+        return this.putObject(minioProperties.getBucketName(), objectName, file, contentType);
     }
 
     /**
@@ -1079,20 +1066,25 @@ public class MinioTemplate {
      *
      * @param objectName 对象名称
      * @param file       文件
+     * @return {@link String} 文件名
      * @throws MinioException minio异常
      */
-    public void putObject(String objectName, File file) throws MinioException {
-        this.putObject(minioProperties.getBucketName(), objectName, file);
+    public String putObject(String objectName, File file) throws MinioException {
+        return this.putObject(minioProperties.getBucketName(), objectName, file);
     }
 
     /**
      * 上传对象
      *
      * @param file 文件
+     * @return {@link String} 文件名
      * @throws MinioException minio异常
      */
-    public void putObject(File file) throws MinioException {
-        this.putObject(file.getName(), file);
+    public String putObject(File file) throws MinioException {
+        Assert.isTrue(FileUtil.exist(file), ExceptionEnum.FILE_NAME_CANNOT_BE_EMPTY.getValue());
+        String extName = FileUtil.extName(file.getName());
+        Assert.notBlank(extName, "非法文件名称：" + file.getName());
+        return this.putObject(IdUtil.fastSimpleUUID() + DateUtil.current() + StrUtil.DOT + extName, file);
     }
 
     /**
@@ -1103,28 +1095,26 @@ public class MinioTemplate {
      * @throws MinioException minio异常
      */
     public String getBucketPolicy(String bucketName) throws MinioException {
-
-        GetBucketPolicyArgs bucketPolicyArgs = GetBucketPolicyArgs.builder()
-                .bucket(bucketName)
-                .build();
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
+        GetBucketPolicyArgs bucketPolicyArgs = GetBucketPolicyArgs.builder().bucket(bucketName).build();
 
         try {
             return minioClient.getBucketPolicy(bucketPolicyArgs);
         } catch (Exception e) {
-            logger.error("getBucketPolicy {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("获取bucket策略异常 {}", e.getMessage());
+            throw new MinioException("获取bucket策略异常", e);
         }
     }
 
     /**
-     * 制定桶策略
+     * 制定bucket策略
      *
      * @param bucketName        bucket名称
-     * @param bucketPolicyParam 桶策略参数
+     * @param bucketPolicyParam bucket策略参数
      * @return {@link Boolean}
      */
     public Boolean setBucketPolicy(String bucketName, BucketPolicyParam bucketPolicyParam) {
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         SetBucketPolicyArgs bucketPolicyArgs = SetBucketPolicyArgs.builder().bucket(bucketName)
                 .config(JSON.toJSONString(bucketPolicyParam)).build();
 
@@ -1132,7 +1122,7 @@ public class MinioTemplate {
             minioClient.setBucketPolicy(bucketPolicyArgs);
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("setBucketPolicy {}", e.getMessage());
+            logger.error("设置bucket策略异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -1145,15 +1135,13 @@ public class MinioTemplate {
      * @return {@link Boolean}
      */
     public Boolean deleteBucketPolicy(String bucketName) {
-
-        DeleteBucketPolicyArgs bucketPolicyArgs = DeleteBucketPolicyArgs.builder()
-                .bucket(bucketName).build();
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
+        DeleteBucketPolicyArgs bucketPolicyArgs = DeleteBucketPolicyArgs.builder().bucket(bucketName).build();
         try {
             minioClient.deleteBucketPolicy(bucketPolicyArgs);
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("deleteBucketPolicy {}", e.getMessage());
+            logger.error("删除bucket 策略异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -1167,14 +1155,14 @@ public class MinioTemplate {
      * @return {@link Boolean} 是否成功
      */
     public Boolean setBucketLifecycle(String bucketName, List<LifecycleRule> rules) {
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         LifecycleConfiguration config = new LifecycleConfiguration(rules);
 
         try {
             minioClient.setBucketLifecycle(SetBucketLifecycleArgs.builder().bucket(bucketName).config(config).build());
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("setBucketLifecycle {}", e.getMessage());
+            logger.error("设置 bucket生命周期异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -1187,42 +1175,42 @@ public class MinioTemplate {
      * @return {@link Boolean} 是否成功
      */
     public Boolean deleteBucketLifecycle(String bucketName) {
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         try {
             minioClient.deleteBucketLifecycle(DeleteBucketLifecycleArgs.builder().bucket(bucketName).build());
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("deleteBucketLifecycle {}", e.getMessage());
+            logger.error("删除bucket生命周期异常 {}", e.getMessage());
         }
         return Boolean.FALSE;
     }
 
     /**
-     * 获取桶生命周期
+     * 获取bucket生命周期
      *
      * @param bucketName bucket名称
      * @return {@link LifecycleConfiguration}
      * @throws MinioException minio异常
      */
     public LifecycleConfiguration getBucketLifecycle(String bucketName) throws MinioException {
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         try {
             return minioClient.getBucketLifecycle(GetBucketLifecycleArgs.builder().bucket(bucketName).build());
         } catch (Exception e) {
-            logger.error("getBucketLifecycle {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("获取bucket生命周期异常 {}", e.getMessage());
+            throw new MinioException("获取bucket生命周期异常", e);
         }
     }
 
     /**
-     * 获取桶通知
+     * 获取bucket通知
      *
      * @param bucketName bucket名称
      * @return {@link NotificationConfiguration}
      * @throws MinioException minio异常
      */
     public NotificationConfiguration getBucketNotification(String bucketName) throws MinioException {
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         GetBucketNotificationArgs notificationArgs = GetBucketNotificationArgs.builder()
                 .bucket(bucketName)
                 .build();
@@ -1230,20 +1218,20 @@ public class MinioTemplate {
         try {
             return minioClient.getBucketNotification(notificationArgs);
         } catch (Exception e) {
-            logger.error("getBucketNotification {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("获取bucket通知异常 {}", e.getMessage());
+            throw new MinioException("获取bucket通知异常", e);
         }
     }
 
     /**
-     * 设置水桶通知
+     * 设置bucket通知
      *
      * @param bucketName          bucket名称
      * @param queueConfigurations 队列配置
      * @return {@link Boolean}
      */
     public Boolean setBucketNotification(String bucketName, List<QueueConfiguration> queueConfigurations) {
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         NotificationConfiguration config = new NotificationConfiguration();
         config.setQueueConfigurationList(queueConfigurations);
 
@@ -1254,91 +1242,88 @@ public class MinioTemplate {
             minioClient.setBucketNotification(bucketNotificationArgs);
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("setBucketNotification {}", e.getMessage());
+            logger.error("设置bucket 通知异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
     }
 
     /**
-     * 删除桶通知
+     * 删除bucket通知
      *
      * @param bucketName bucket名称
      * @return {@link Boolean}
      */
     public Boolean deleteBucketNotification(String bucketName) {
-
-        DeleteBucketNotificationArgs bucketNotificationArgs = DeleteBucketNotificationArgs.builder()
-                .bucket(bucketName).build();
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
+        DeleteBucketNotificationArgs bucketNotificationArgs = DeleteBucketNotificationArgs.builder().bucket(bucketName).build();
         try {
 
             minioClient.deleteBucketNotification(bucketNotificationArgs);
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("deleteBucketNotification {}", e.getMessage());
+            logger.error("删除bucket通知异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
     }
 
     /**
-     * 获取桶复制配置
+     * 获取bucket复制配置
      *
      * @param bucketName bucket名称
      * @return {@link ReplicationConfiguration}
      * @throws MinioException minio异常
      */
     public ReplicationConfiguration getBucketReplication(String bucketName) throws MinioException {
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         GetBucketReplicationArgs bucketReplicationArgs = GetBucketReplicationArgs.builder().bucket(bucketName).build();
 
         try {
 
             return minioClient.getBucketReplication(bucketReplicationArgs);
         } catch (Exception e) {
-            logger.error("deleteBucketNotification {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("删除bucket复制配置异常 {}", e.getMessage());
+            throw new MinioException("删除bucket复制配置异常", e);
         }
 
     }
 
     /**
-     * 设置水桶复制
+     * 设置bucket复制
      *
      * @param bucketName bucket名称
      * @param rules      规则
      * @return {@link Boolean}
      */
     public Boolean setBucketReplication(String bucketName, List<ReplicationRule> rules) {
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         ReplicationConfiguration config = new ReplicationConfiguration("REPLACE-WITH-ACTUAL-ROLE", rules);
-
         SetBucketReplicationArgs bucketReplicationArgs = SetBucketReplicationArgs.builder().bucket(bucketName).config(config).build();
 
         try {
             minioClient.setBucketReplication(bucketReplicationArgs);
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("setBucketReplication {}", e.getMessage());
+            logger.error("设置bucket复制异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
     }
 
     /**
-     * 删除桶复制
+     * 删除bucket复制
      *
      * @param bucketName bucket名称
      * @return {@link Boolean}
      */
     public Boolean deleteBucketReplication(String bucketName) {
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         try {
             minioClient.deleteBucketReplication(DeleteBucketReplicationArgs.builder().bucket(bucketName).build());
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("deleteBucketReplication {}", e.getMessage());
+            logger.error("删除bucket复制异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -1356,9 +1341,9 @@ public class MinioTemplate {
      */
     public List<NotificationRecords> listenBucketNotification(String bucketName, String prefix, String suffix, String[] events) throws MinioException {
 
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         ListenBucketNotificationArgs notificationArgs = ListenBucketNotificationArgs.builder()
-                .bucket(bucketName)
-                .prefix(prefix).suffix(suffix).events(events).build();
+                .bucket(bucketName).prefix(prefix).suffix(suffix).events(events).build();
 
         try {
 
@@ -1370,7 +1355,7 @@ public class MinioTemplate {
             }
             return eventList;
         } catch (Exception e) {
-            logger.error("listenBucketNotification {}", e.getMessage());
+            logger.error("监听bucket的对象通知异常 {}", e.getMessage());
             throw new MinioException(e.getMessage());
         }
     }
@@ -1395,9 +1380,9 @@ public class MinioTemplate {
      * @return {@link Boolean}
      */
     public Boolean setBucketEncryption(String bucketName, SseAlgorithm sseAlgorithm) {
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         SseConfiguration config = StrUtil.equals(SseAlgorithm.AES256.toString(), sseAlgorithm.toString())
-                ?  SseConfiguration.newConfigWithSseS3Rule() : SseConfiguration.newConfigWithSseKmsRule(IdUtil.fastUUID());
+                ?  SseConfiguration.newConfigWithSseS3Rule() : SseConfiguration.newConfigWithSseKmsRule(IdUtil.fastSimpleUUID());
 
         SetBucketEncryptionArgs bucketEncryptionArgs = SetBucketEncryptionArgs.builder().bucket(bucketName).config(config).build();
 
@@ -1405,41 +1390,47 @@ public class MinioTemplate {
             minioClient.setBucketEncryption(bucketEncryptionArgs);
             return Boolean.TRUE;
         } catch (Exception e) {
-            logger.error("setBucketEncryption {}", e.getMessage());
+            logger.error("bucket 设置加密异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
     }
 
     /**
-     * 获取水桶加密
+     * 获取bucket加密
      *
      * @param bucketName bucket名称
-     * @return {@link SseConfigurationRule} 水桶加密方式
+     * @return {@link SseConfigurationRule} bucket加密方式
      * @throws MinioException minio异常
      */
     public SseConfigurationRule getBucketEncryption(String bucketName) throws MinioException {
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         GetBucketEncryptionArgs bucketEncryptionArgs = GetBucketEncryptionArgs.builder().bucket(bucketName).build();
 
         try {
             SseConfiguration configuration = minioClient.getBucketEncryption(bucketEncryptionArgs);
             return configuration.rule();
         }catch (Exception e) {
-            logger.error("getBucketEncryption {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("获取bucket加密异常 {}", e.getMessage());
+            throw new MinioException("获取bucket加密异常", e);
         }
     }
 
+    /**
+     * 删除bucket加密
+     *
+     * @param bucketName bucket名称
+     * @return {@link Boolean}
+     */
     public Boolean deleteBucketEncryption(String bucketName) {
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         DeleteBucketEncryptionArgs bucketEncryptionArgs = DeleteBucketEncryptionArgs.builder().bucket(bucketName).build();
         try {
 
             minioClient.deleteBucketEncryption(bucketEncryptionArgs);
             return Boolean.TRUE;
         }catch (Exception e) {
-            logger.error("deleteBucketEncryption {}", e.getMessage());
+            logger.error("删除bucket加密异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -1454,14 +1445,14 @@ public class MinioTemplate {
      * @throws MinioException minio异常
      */
     public Map<String, String> getBucketTags(String bucketName) throws MinioException{
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         GetBucketTagsArgs bucketTagsArgs = GetBucketTagsArgs.builder().bucket(bucketName).build();
         try {
             Tags bucketTags = minioClient.getBucketTags(bucketTagsArgs);
             return bucketTags.get();
         }catch (Exception e) {
-            logger.error("getBucketTags {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("获取bucket标签异常 {}", e.getMessage());
+            throw new MinioException("获取bucket标签异常", e);
         }
 
     }
@@ -1474,13 +1465,13 @@ public class MinioTemplate {
      * @return {@link Boolean} 是否成功
      */
     public Boolean setBucketTags(String bucketName, Map<String, String> tags) {
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         SetBucketTagsArgs bucketTagsArgs = SetBucketTagsArgs.builder().bucket(bucketName).tags(tags).build();
         try {
             minioClient.setBucketTags(bucketTagsArgs);
             return Boolean.TRUE;
         }catch (Exception e) {
-            logger.error("setBucketTags {}", e.getMessage());
+            logger.error("设置bucket标签异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -1493,13 +1484,13 @@ public class MinioTemplate {
      * @return {@link Boolean}
      */
     public Boolean deleteBucketTags(String bucketName) {
-
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         DeleteBucketTagsArgs bucketTagsArgs = DeleteBucketTagsArgs.builder().bucket(bucketName).build();
         try {
             minioClient.deleteBucketTags(bucketTagsArgs);
             return Boolean.TRUE;
         }catch (Exception e) {
-            logger.error("deleteBucketTags {}", e.getMessage());
+            logger.error("删除bucket标签异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -1514,14 +1505,15 @@ public class MinioTemplate {
      * @throws MinioException minio异常
      */
     public Map<String, String> getObjectTags(String bucketName, String objectName) throws MinioException {
-
+        Assert.notBlank(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY.getValue());
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         GetObjectTagsArgs tagsArgs = GetObjectTagsArgs.builder().bucket(bucketName).object(objectName).build();
 
         try {
             return minioClient.getObjectTags(tagsArgs).get();
         }catch (Exception e) {
-            logger.error("getObjectTags {}", e.getMessage());
-            throw new MinioException(e.getMessage());
+            logger.error("获取对象标签异常 {}", e.getMessage());
+            throw new MinioException("获取对象标签异常", e);
         }
 
     }
@@ -1546,14 +1538,15 @@ public class MinioTemplate {
      * @return {@link Boolean}  是否成功
      */
     public Boolean setObjectTags(String bucketName, String objectName, Map<String, String> tags) {
-
+        Assert.notBlank(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY.getValue());
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
         SetObjectTagsArgs objectTagsArgs = SetObjectTagsArgs.builder().bucket(bucketName).object(objectName).tags(tags).build();
 
         try {
             minioClient.setObjectTags(objectTagsArgs);
             return Boolean.TRUE;
         }catch (Exception e) {
-            logger.error("setObjectTags {}", e.getMessage());
+            logger.error("设置对象标签异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -1579,13 +1572,16 @@ public class MinioTemplate {
      */
     public Boolean deleteObjectTags(String bucketName, String objectName) {
 
+        Assert.notBlank(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY.getValue());
+        Assert.notBlank(bucketName, ExceptionEnum.BUCKET_NAME_CANNOT_BE_EMPTY.getValue());
+
         DeleteObjectTagsArgs objectTagsArgs = DeleteObjectTagsArgs.builder().bucket(bucketName).object(objectName).build();
 
         try {
             minioClient.deleteObjectTags(objectTagsArgs);
             return Boolean.TRUE;
         }catch (Exception e) {
-            logger.error("deleteObjectTags {}", e.getMessage());
+            logger.error("删除对象标签异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
@@ -1599,15 +1595,14 @@ public class MinioTemplate {
      * @return {@link Boolean} 是否成功
      */
     public Boolean deleteObjectTags( String objectName) {
-
-        DeleteObjectTagsArgs objectTagsArgs = DeleteObjectTagsArgs.builder()
-                .bucket(minioProperties.getBucketName()).object(objectName).build();
+        Assert.notBlank(objectName, ExceptionEnum.OBJECT_NAME_CANNOT_BE_EMPTY.getValue());
+        DeleteObjectTagsArgs objectTagsArgs = DeleteObjectTagsArgs.builder().bucket(minioProperties.getBucketName()).object(objectName).build();
 
         try {
             minioClient.deleteObjectTags(objectTagsArgs);
             return Boolean.TRUE;
         }catch (Exception e) {
-            logger.error("deleteObjectTags {}", e.getMessage());
+            logger.error("删除对象标签异常 {}", e.getMessage());
         }
 
         return Boolean.FALSE;
